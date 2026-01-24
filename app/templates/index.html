@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HydroWise AI</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif}</style>
+</head>
+<body class="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+<main class="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 md:p-8">
+
+<!-- LOGIN VIEW -->
+<section id="login" class="space-y-6">
+  <div class="text-center">
+    <h2 class="text-xl font-bold">おかえりなさい</h2>
+    <p class="text-sm text-slate-500">ログインして記録を始めましょう</p>
+  </div>
+  <form class="space-y-4" onsubmit="event.preventDefault();goInput()">
+    <input required type="email" placeholder="example@mail.com" class="w-full p-3 rounded-xl border" />
+    <input required type="password" placeholder="••••••••" class="w-full p-3 rounded-xl border" />
+    <button class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">ログイン</button>
+  </form>
+  <div class="grid grid-cols-2 gap-3">
+    <button class="border rounded-xl py-2">Google</button>
+    <button class="border rounded-xl py-2">Apple</button>
+  </div>
+  <button onclick="goInput()" class="w-full text-sm text-slate-500">匿名で試してみる</button>
+</section>
+
+<!-- INPUT VIEW -->
+<section id="input" class="hidden space-y-8">
+<form onsubmit="event.preventDefault();goLoading()" class="space-y-8">
+
+<section>
+<h3 class="text-sm font-bold text-slate-400 mb-2">基本情報</h3>
+<div class="grid grid-cols-2 gap-4">
+<input type="number" value="30" class="p-2 bg-slate-100 rounded" />
+<input type="number" value="65" class="p-2 bg-slate-100 rounded" />
+</div>
+</section>
+
+<section class="space-y-4">
+<h3 class="text-sm font-bold text-slate-400">今日の状態</h3>
+
+<div>
+<label class="text-xs">飲んだ水の量 (L)</label>
+<div class="flex items-center gap-4">
+<input id="water" type="range" min="0" max="5" step="0.1" value="1" oninput="waterVal.innerText=this.value+'L'" class="flex-1" />
+<span id="waterVal" class="font-bold text-blue-600">1L</span>
+</div>
+</div>
+
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="text-xs">活動量</label>
+<div class="flex bg-slate-100 p-1 rounded-xl" data-group="activity">
+<button type="button" class="opt active" onclick="selectOpt(this)">低</button>
+<button type="button" class="opt" onclick="selectOpt(this)">中</button>
+<button type="button" class="opt" onclick="selectOpt(this)">高</button>
+</div>
+</div>
+<div>
+<label class="text-xs">天気</label>
+<div class="flex bg-slate-100 p-1 rounded-xl" data-group="weather">
+<button type="button" class="opt active" onclick="selectOpt(this)">晴</button>
+<button type="button" class="opt" onclick="selectOpt(this)">雨</button>
+<button type="button" class="opt" onclick="selectOpt(this)">曇</button>
+</div>
+</div>
+</div>
+</section>
+
+<button class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold">分析結果を見る</button>
+</form>
+</section>
+
+<!-- LOADING VIEW -->
+<section id="loading" class="hidden text-center space-y-4">
+<div class="mx-auto h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+<p class="text-sm text-slate-500">AIが測定中です…</p>
+</section>
+
+<!-- RESULT VIEW -->
+<section id="result" class="hidden space-y-6">
+<div class="text-center">
+<div class="mx-auto w-24 h-24 rounded-full bg-green-100 flex items-center justify-center text-4xl">🟢</div>
+<h2 class="text-2xl font-bold text-green-600 mt-2">水分補給は十分です</h2>
+</div>
+<div class="bg-slate-100 p-4 rounded-xl text-sm">AIアドバイスがここに表示されます</div>
+<button onclick="goInput()" class="w-full bg-slate-900 text-white py-4 rounded-2xl">戻って再入力</button>
+</section>
+
+</main>
+
+<style>
+.opt{flex:1;padding:4px;border-radius:8px;font-size:12px;color:#64748b}
+.opt.active{background:white;color:#2563eb;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+</style>
+
+<script>
+const views={login, input, loading, result};
+function hideAll(){Object.values(views).forEach(v=>v.classList.add('hidden'))}
+function goLogin(){hideAll();login.classList.remove('hidden')}
+function goInput(){hideAll();input.classList.remove('hidden')}
+async function goLoading() {
+  hideAll();
+  loading.classList.remove('hidden');
+
+  // --- ここがバックエンドとの接続！ ---
+  const response = await fetch('/predict', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      age: document.querySelector('input[type="number"]:nth-child(1)').value,
+      weight: document.querySelector('input[type="number"]:nth-child(2)').value,
+      water: document.getElementById('water').value,
+      activity: document.querySelector('[data-group="activity"] .active').innerText, // 「低」とか
+      weather: document.querySelector('[data-group="weather"] .active').innerText     // 「晴」とか
+    })
+  });
+  
+  const data = await response.json();
+  
+  // 結果画面にAIの予測を表示
+  document.querySelector('#result h2').innerText = data.result; 
+  goResult();
+}
+function goResult(){hideAll();result.classList.remove('hidden')}
+function selectOpt(btn){const group=btn.parentElement;group.querySelectorAll('.opt').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
+goLogin();
+</script>
+</body>
+</html>

@@ -38,25 +38,58 @@ def load_data(filepath):
     print(f"データ読み込み完了: {len(df)}行")
     return df
 
+class MockEncoder:
+    def __init__(self, mapping):
+        # ここを修正！ self.mapping に保存してエラー回避
+        self.mapping = mapping
+        # 辞書のキーを値の順にソートしてクラスとして保持
+        self.classes_ = np.array(sorted(mapping, key=mapping.get))
+        
+    def transform(self, x):
+        # 保存しておいた self.mapping を使う
+        return x.map(self.mapping)
+        
+    def inverse_transform(self, x):
+        # 保存しておいた self.mapping を使う
+        inv_map = {v: k for k, v in self.mapping.items()}
+        return np.array([inv_map[i] for i in x])
+
+# ---------------------------------------------------------
+# 2. preprocess_data関数（必ず def の下に中身をインデントする！）
+# ---------------------------------------------------------
 def preprocess_data(df, exclude_gender=False):
     """データの前処理を行う"""
     encoders = {}
     
-    # カテゴリカル変数のエンコーディング
-    categorical_cols = ['Gender', 'Physical Activity Level', 'Weather']
+    # --- マッピングを定義（AIに教える「言葉と数字のルール」） ---
+    # Low=0, Moderate=1, High=2 (活動量が増えるほど数字も増える)
+    activity_mapping = {'Low': 0, 'Moderate': 1, 'High': 2}
     
-    for col in categorical_cols:
+    # Cold=0, Normal=1, Hot=2 (暑いほど脱水リスクが高い数字にする)
+    weather_mapping = {'Cold': 0, 'Normal': 1, 'Hot': 2}
+    
+    # Good=0, Poor=1 (悪い状態を1にする)
+    hydration_mapping = {'Good': 0, 'Poor': 1}
+
+    # --- マッピングをデータに適用 ---
+    # 既存のデータを辞書を使って数字に置き換える
+    df['Physical Activity Level'] = df['Physical Activity Level'].map(activity_mapping)
+    df['Weather'] = df['Weather'].map(weather_mapping)
+    df['Hydration Level'] = df['Hydration Level'].map(hydration_mapping)
+
+    # --- エンコーダーの保存 ---
+    # ここでさっき外に作った MockEncoder を使うよ！
+    encoders['Physical Activity Level'] = MockEncoder(activity_mapping)
+    encoders['Weather'] = MockEncoder(weather_mapping)
+    encoders['Hydration Level'] = MockEncoder(hydration_mapping)
+
+    # 性別は順番関係ないので普通のLabelEncoderでOK
+    if not exclude_gender:
         le = LabelEncoder()
-        df[col] = le.fit_transform(df[col])
-        encoders[col] = le
-        print(f"{col} エンコード: {dict(zip(le.classes_, le.transform(le.classes_)))}")
-    
-    # ターゲット変数のエンコーディング
-    target_encoder = LabelEncoder()
-    df['Hydration Level'] = target_encoder.fit_transform(df['Hydration Level'])
-    encoders['Hydration Level'] = target_encoder
-    print(f"Hydration Level エンコード: {dict(zip(target_encoder.classes_, target_encoder.transform(target_encoder.classes_)))}")
-    
+        df['Gender'] = le.fit_transform(df['Gender'])
+        encoders['Gender'] = le
+
+    # 最後に変換したデータとエンコーダーを返す
     return df, encoders
 
 def apply_smote(X_train, y_train):
