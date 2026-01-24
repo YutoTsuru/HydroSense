@@ -88,7 +88,7 @@
 <div class="mx-auto w-24 h-24 rounded-full bg-green-100 flex items-center justify-center text-4xl">🟢</div>
 <h2 class="text-2xl font-bold text-green-600 mt-2">水分補給は十分です</h2>
 </div>
-<div class="bg-slate-100 p-4 rounded-xl text-sm">AIアドバイスがここに表示されます</div>
+<div id="advice" class="bg-slate-100 p-4 rounded-xl text-sm">AIアドバイスがここに表示されます</div>
 <button onclick="goInput()" class="w-full bg-slate-900 text-white py-4 rounded-2xl">戻って再入力</button>
 </section>
 
@@ -125,6 +125,10 @@ async function goLoading() {
   
   // 結果画面にAIの予測を表示
   document.querySelector('#result h2').innerText = data.result; 
+  const adviceElement = document.getElementById('advice');
+  if (adviceElement) {
+      adviceElement.innerText = data.advice;
+  }
   goResult();
 }
 function goResult(){hideAll();result.classList.remove('hidden')}

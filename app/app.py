@@ -31,11 +31,10 @@ def index():
 def predict():
     data = request.json
     
-    # 1. AIくんの辞書に合わせたマッピング
+    # 1. データの準備
     activity_map = {'低': 'Low', '中': 'Moderate', '高': 'High'}
     weather_map = {'晴': 'Hot', '雨': 'Cold', '曇': 'Normal'}
     
-    # 2. データの組み立て
     input_df = pd.DataFrame([{
         'Age': int(data['age']),
         'Weight (kg)': float(data['weight']),
@@ -44,51 +43,80 @@ def predict():
         'Weather': weather_map.get(data['weather'], data['weather'])
     }])
 
-    # --- デバッグ用：AIに渡す直前の「文字」を確認 ---
-    print(f"DEBUG - AIに渡すデータ:\n{input_df}")
-
-    # 3. エンコード（数字変換）
+    # 2. 数字に変換
     for col in ['Physical Activity Level', 'Weather']:
         input_df[col] = encoders[col].transform(input_df[col])
 
-    # --- デバッグ用：AIに渡す直前の「数字」を確認 ---
-    print(f"DEBUG - エンコード後の数字:\n{input_df}")
-
-    # 4. 予測実行
-    prediction_idx = model.predict(input_df)[0]
-
+    # =================================================================
+    # 👑 最強ハイブリッド判定ロジック（現実的調整版） 👑
+    # =================================================================
+    
     current_activity = input_df['Physical Activity Level'].iloc[0] # 0=Low, 1=Moderate, 2=High
     current_water = input_df['Daily Water Intake (liters)'].iloc[0]
-    current_weather = input_df['Weather'].iloc[0] # 0=Cold(雨), 1=Normal(曇), 2=Hot(晴)
+    current_weather = input_df['Weather'].iloc[0] # 0=Cold, 1=Normal, 2=Hot
+
+    # AIに「確率」を聞く
+    probs = model.predict_proba(input_df)
+    poor_prob = probs[0][1]
     
-    print(f"DEBUG - 補正前チェック: 活動={current_activity}, 天気={current_weather}, 水={current_water}")
+    print(f"DEBUG - AIリスク確率: {poor_prob * 100:.1f}%")
 
-    # --- ルール1：活動量が高いのに水が少ない時 ---
-    if current_activity >= 1 and current_water < 1.0:
-        print("DEBUG - ⚠️ 運動してるのに水が少ない！強制的に『リスクあり』にします")
-        prediction_idx = 1 
+    prediction_idx = 0 
 
-    # --- ルール2：晴れ（暑い）なのに水が少ない時 ---
-    # 活動量が低くても、晴れ(2)なら 1.2L くらい飲まないと危険！というルールを追加
-    elif current_weather == 2 and current_water < 1.2:
-        print("DEBUG - ⚠️ 晴れてるのに水が少ない！強制的に『リスクあり』にします")
+    # 🛡️ STEP 1: ルール（安全装置）チェック
+    
+    # 【Lv.MAX】 猛暑(2) かつ 激しい運動(2) -> 1.8L未満ならアウト
+    if current_weather == 2 and current_activity == 2 and current_water < 1.8:
         prediction_idx = 1
-    
-    # 5. 【ここが超重要】AIが知っている文字に逆変換して判定
+        print("DEBUG - [判定] ルール：猛暑で激しい運動！1.8L未満なので強制Poor")
+
+    # 【Lv.High】 活動量が高い(2) -> 1.2L未満ならアウト
+    elif current_activity == 2 and current_water < 1.2:
+        prediction_idx = 1
+        print("DEBUG - [判定] ルール：激しい運動のため1.2L未満は強制Poor")
+
+    # 【Lv.Middle】 猛暑(2) -> 1.0L未満ならアウト
+    elif current_weather == 2 and current_water < 0.8:
+        prediction_idx = 1
+        print("DEBUG - [判定] ルール：猛暑のため1.0L未満は強制Poor")
+        
+    # 【Lv.Low】 救済ゾーン：活動量「低(0)」かつ猛暑じゃない -> 0.5Lあればセーフ
+    elif current_activity == 0 and current_weather != 2 and current_water >= 0.5:
+        prediction_idx = 0
+        print("DEBUG - [判定] ルール：安静時救済。0.5L以上でGood")
+
+    # 🤖 STEP 2: AI閾値チェック
+    else:
+        THRESHOLD = 0.35
+        if poor_prob > THRESHOLD:
+            prediction_idx = 1
+            print(f"DEBUG - [判定] AI閾値：確率{poor_prob:.2f} > {THRESHOLD} なのでPoor")
+        else:
+            prediction_idx = 0
+            print(f"DEBUG - [判定] AI閾値：確率{poor_prob:.2f} <= {THRESHOLD} なのでGood")
+
+    # =================================================================
+
+    # 3. 結果作成 & アドバイス
     raw_result = encoders['Hydration Level'].inverse_transform([prediction_idx])[0]
     
-    print(f"DEBUG - AIの予測(数字): {prediction_idx}")
-    print(f"DEBUG - AIの予測(文字): {raw_result}")
-
-    # 6. 判定結果を日本語にする
-    # AIが 'Good' と言ったら「十分」、それ以外（Poor）なら「リスクあり」
-    if raw_result == 'Good':
-        final_result = '水分補給は十分です 🟢'
+    advice_message = ""
+    if prediction_idx == 0:
+        advice_message = "素晴らしい水分管理です！この調子でキープしましょう✨"
     else:
-        final_result = '脱水のリスクがあります 🔴'
+        if current_weather == 2:
+            advice_message = "今日は暑いので、喉が渇く前にこまめに水を飲んでください！☀️💦"
+        elif current_activity == 2:
+            advice_message = "運動で汗をかいています！スポーツドリンクなどで塩分も補給してね🏃‍♂️"
+        else:
+            advice_message = "水分が不足しています。コップ1杯の水を今すぐ飲みましょう！🚰"
 
-    return jsonify({'result': final_result})
+    final_result = '水分補給は十分です 🟢' if prediction_idx == 0 else '脱水のリスクがあります 🔴'
 
+    return jsonify({
+        'result': final_result,
+        'advice': advice_message
+    })
 
     
 
